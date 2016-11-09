@@ -1,0 +1,338 @@
+---
+title: "Chapter 4 exercises"
+author: "Nick Lauerman"
+output: pdf_document
+---
+```{rglobal_options, include=FALSE}
+knitr::opts_chunk$set(tidy=FALSE)
+
+```
+# Question 1
+## part a
+```{r question 1.a}
+#teams <- read.csv("f:/Baseball/data/lahman/teams.csv") # HOME
+teams <- read.csv("e:/Baseball/data/lahman/teams.csv") # WORK
+
+teams60 <- subset(teams,
+                  yearID >= 1961 & yearID <= 1970,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+teams60$RD <- with(teams60, R - RA)
+teams60$Wpct <- with(teams60, W / (W + L))
+
+teams70 <- subset(teams,
+                  yearID >= 1971 & yearID <= 1980,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+teams70$RD <- with(teams70, R - RA)
+teams70$Wpct <- with(teams70, W / (W + L))
+
+teams80 <- subset(teams,
+                  yearID >= 1981 & yearID <= 1990,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+teams80$RD <- with(teams80, R - RA)
+teams80$Wpct <- with(teams80, W / (W + L))
+
+teams90 <- subset(teams,
+                  yearID >= 1991 & yearID <= 2000,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+teams90$RD <- with(teams90, R - RA)
+teams90$Wpct <- with(teams90, W / (W + L))
+
+teams00 <- subset(teams,
+                  yearID >= 2001 & yearID <= 2010,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+teams00$RD <- with(teams00, R - RA)
+teams00$Wpct <- with(teams00, W / (W + L))
+
+
+lin60 <- lm(Wpct ~ RD, data = teams60)
+lin60
+
+lin70 <- lm(Wpct ~ RD, data = teams70)
+lin70
+
+lin80 <- lm(Wpct ~ RD, data = teams80)
+lin80
+
+lin90 <- lm(Wpct ~ RD, data = teams90)
+lin90
+
+lin00 <- lm(Wpct ~ RD, data = teams00)
+lin00
+```
+
+## b
+```{r question 1.b}
+wins60 <- as.numeric(coef(lin60)[1] + 10 * coef(lin60)[2])
+wins60
+
+wins70 <- as.numeric(coef(lin70)[1] + 10 * coef(lin70)[2])
+wins70
+
+wins80 <- as.numeric(coef(lin80)[1] + 10 * coef(lin80)[2])
+wins80
+
+wins90 <- as.numeric(coef(lin90)[1] + 10 * coef(lin90)[2])
+wins90
+
+wins00 <- as.numeric(coef(lin00)[1] + 10 * coef(lin00)[2])
+wins00
+
+plot(c(seq(from = 1960,
+           to = 2000,
+           by = 10)),
+     c(wins60, 
+       wins70, 
+       wins80,
+       wins90,
+       wins00),
+     pch=2,
+     xlab = "decade",
+     ylab = "Winning percentage",
+     main = "10 year perdiction of run differinetal of 10")
+```
+
+# Question 2
+## a
+
+```{r question 2.a}
+teams19 <- subset(teams,
+                  yearID <= 1900,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+teams19$RD <- with(teams19, R - RA)
+teams19$Wpct <- with(teams19, W / (W + L))
+
+teams19$ptyWpct <- with(teams19, R^2 / (R^2 + RA^2))
+teams19$ptyResiduals <- with(teams19, Wpct - ptyWpct)
+```
+
+## b
+```{r question 2.b}
+
+with(teams19, plot(Wpct, ptyResiduals,
+                   ylab = "Pythagorean residuals",
+                   xlab = "Winning Percentage"))
+abline(h=0)
+```
+
+# Question 3
+## a
+```{r section 3.a}
+#source("e:/Baseball/scripts/baseball.R")
+#parse.retrosheet.php(1990)
+#for(season in 1991:2000){
+#     parse.retrosheet.php(season)
+#}
+#
+# above not needed. Download GL and unzipped and moved to data/retro
+
+manager <- read.table("e:/Baseball/data/retro/GL1990.txt", sep=",")
+for(season in 1991:2000){
+     file <- paste0("e:/Baseball/data/retro/GL",season,".txt")
+     temp <- read.table(file, sep =",")
+     manager <- rbind(manager, temp)
+     rm(temp)
+     rm(file)
+}
+
+glheaders <- read.csv("e:/baseball/data/Book/game_log_header.csv")
+names(manager) <- names(glheaders)
+manager <- subset(manager, select = c("VisitingTeam",
+                                      "HomeTeam",
+                                      "VisitorRunsScored",
+                                      "HomeRunsScore",
+                                      "VisitorManagerID",
+                                      "VisitorManagerName",
+                                      "HomeManagerID",
+                                      "HomeManagerName"))
+make.manager <- function(manager){
+     # create a list of teams
+     teams <- as.character(levels(manager$HomeTeam))
+     for (i in 1:nrow(manager)){
+          manager$game_number[i] <- i
+     }
+     
+     #make a list of home games
+     home.teams <- subset(manager, HomeTeam == teams[1])
+     
+     for(i in 2:length(teams)){
+          temp <- subset(manager, HomeTeam == teams[i])
+          home.teams <- rbind(home.teams,temp)
+     }
+     # Assign verables
+     home.teams$Home <- TRUE
+     home.teams$manager  <- home.teams$HomeManagerName
+     home.teams$ManagerID <- home.teams$HomeManagerID
+     home.teams$R  <- home.teams$HomeRunsScore
+     home.teams$RA  <- home.teams$VisitorRunsScored
+     home.teams$team  <- home.teams$HomeTeam
+     for(i in 1:nrow(home.teams)){
+          if(home.teams$R[i] > home.teams$RA[i]){
+               home.teams$W[i] <- 1
+               home.teams$L[i] <- 0
+          } else {
+               home.teams$W[i] <- 0
+               home.teams$L[i] <- 1
+          }
+     }
+     
+     
+     #make a list of away games
+     visit.teams <- subset(manager, VisitingTeam == teams[1])
+     for(i in 2:length(teams)){
+          temp <- subset(manager, VisitingTeam == teams[i])
+          visit.teams <- rbind(visit.teams,temp)
+     }
+     # Assign verables
+     visit.teams$Home <- FALSE
+     visit.teams$manager  <- visit.teams$VisitorManagerName
+     visit.teams$ManagerID <- visit.teams$VisitorManagerID     
+     visit.teams$RA  <- visit.teams$HomeRunsScore
+     visit.teams$R  <- visit.teams$VisitorRunsScored
+     visit.teams$team  <- visit.teams$VisitingTeam
+     for(i in 1:nrow(visit.teams)){
+          if(visit.teams$R[i] > visit.teams$RA[i]){
+               visit.teams$W[i] <- 1
+               visit.teams$L[i] <- 0
+          } else {
+               visit.teams$W[i] <- 0
+               visit.teams$L[i] <- 1
+          }
+     }
+     #combine to a single data frame
+     manager <- rbind(home.teams,visit.teams)
+     manager <- subset(manager,
+                       select = c("team",
+                                  "game_number",
+                                  "Home",
+                                  "manager",
+                                  "ManagerID",
+                                  "R",
+                                  "RA",
+                                  "W",
+                                  "L"))
+}
+
+manager.small <- make.manager(manager)
+library(reshape2)
+manager.melt <- melt(manager.small,
+                     id.vars = "manager",
+                     measure.vars = c("R",
+                                      "RA",
+                                      "W",
+                                      "L"))
+
+manager.cast <- dcast(manager.melt, manager ~ variable, sum)
+
+# Compute winning percentage (Wpct), Pyth Winning Percentage (pytWpct),
+#    and Pyth Residuals (pythResiduals)
+manager.cast$games <- with(manager.cast, W + L)
+manager.cast$Wpct  <- with(manager.cast, W/(W + L))
+
+manager.cast$pytWpct <- with(manager.cast,
+                             R ^ 2 / (R ^ 2  +  RA ^ 2))
+manager.cast$pytResiduals <- manager.cast$Wpct - manager.cast$pytWpct
+
+# order the data frame on the residuals
+manager.cast <- manager.cast[order(manager.cast$pytResiduals, decreasing = TRUE), ]
+```
+
+## b
+Managers that over performed
+```{r over}
+head(manager.cast, n=10)
+```
+
+Manager that under performed
+```{r under}
+tail(manager.cast, n=10)
+```
+
+and some plots
+```{r q3 plots}
+with(manager.cast, plot(Wpct, pytResiduals,
+                        ylab = "Pythagorean residuals",
+                        xlab = "Winning Percentage",
+                        main = "All managers 1990 to 2000"))
+abline(h=0)
+boxplot(manager.cast$pytResiduals,
+        horizontal = TRUE,
+        main = "residules for all managers")
+boxplot(manager.cast$pytResiduals,
+        horizontal = TRUE,
+        main = "residules for all managers witout outliers",
+        outline = FALSE)
+```
+
+
+
+## Extra
+Remove managers that played ofer 10 games.
+```{r exercise 3 extra}
+manager.reduced <- subset(manager.cast, games > 10)
+```
+Managers that over performed
+```{r over smaller}
+head(manager.reduced, n=10)
+```
+
+Manager that under performed
+```{r under smaller}
+tail(manager.reduced, n=10)
+```
+```{r plots smaller}
+with(manager.reduced, plot(Wpct, pytResiduals,
+                        ylab = "Pythagorean residuals",
+                        xlab = "Winning Percentage",
+                        main = "Managers that played 10 or more games 1990 to 2000"))
+abline(h=0)
+
+boxplot(manager.reduced$pytResiduals,
+        horizontal = TRUE,
+        main = "residules for all managers")
+boxplot(manager.reduced$pytResiduals,
+        horizontal = TRUE,
+        main = "residules for all managers witout outliers",
+        outline = FALSE)
+```

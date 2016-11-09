@@ -1,0 +1,215 @@
+---
+title: "Chapter 3 Exercises"
+author: "Nick Lauerman"
+
+output: html_document
+---
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(tidy=FALSE)
+
+```
+# Using the HOF Pitching Data
+## Exercise 1
+```{r exercise 1}
+#hofpitching <- read.csv("~/R/Baseball/data/book/hofpitching.csv") # HOME
+hofpitching <- read.csv("E:/Baseball/data/book/hofpitching.csv") # WORK
+
+hofpitching$BP.Group <- with(hofpitching,
+                             cut(BF, c(0, 10000, 15000, 20000, 30000),
+                                 labels = c("Less than 10,000",
+                                            "(10,000, 15,000)",
+                                            "(15,000, 20,000)",
+                                            "More than 20,000")))
+table(hofpitching$BP.Group)
+barplot(table(hofpitching$BP.Group))
+pie(table(hofpitching$BP.Group))
+```
+
+## Exercise 2 
+
+```{r}
+# a
+hist(hofpitching$WAR,
+     xlab = "WAR",
+     main = "HOF Pitchers WAR Distrubation")
+# b
+hof.p.war <- subset(hofpitching,
+                    WAR >125,
+                    select = c("X","WAR","IP"))
+hof.p.war
+```
+
+## Exercise 3
+
+```{r}
+hofpitching$WAR.Season <- with(hofpitching, WAR / Yrs)
+# a
+with(hofpitching, stripchart(WAR.Season ~ BP.Group,
+                             method = "jitter",
+                             las = 2,
+                             pch = 1))
+# b
+with(hofpitching, boxplot (WAR.Season ~ BP.Group))
+
+```
+
+## Exercise 4
+
+```{r}
+hofpitching$MidYear <- with(hofpitching, (From + To) / 2)
+hofpitching.recent <- subset(hofpitching, MidYear >= 1960)
+
+# a
+hofpitching.recent <- hofpitching.recent[(order(hofpitching.recent$WAR.Season)), ]
+
+# b
+dotchart(hofpitching.recent$WAR.Season,
+         label = hofpitching.recent$X)
+
+```
+
+## Exercise 5
+
+```{r}
+plot(WAR.Season ~ MidYear, 
+     data = hofpitching.recent,
+     xlab = "WAR per Season",
+     ylab = "Mid Year") 
+with(hofpitching.recent, lines(lowess(MidYear, WAR.Season),
+                               lty = 2))
+```
+
+# Working with Lahman Data
+
+## Exercise 6
+```{r}
+# a
+master <- read.csv("E:/Baseball/data/lahman/Master.csv")  # WORK
+batting <- read.csv("E:/Baseball/data/lahman/Batting.csv")  # WORK
+
+# b
+getinfo <- function(firstname, lastname){
+     playerline <- subset(master,
+                          nameFirst == firstname & nameLast == lastname)
+     name.code <- as.character(playerline$playerID)
+     birthyear <- playerline$birthYear
+     birthmonth <- playerline$birthMonth
+     birthday <- playerline$birthDay
+     byear <- ifelse(birthmonth <= 6, birthyear, birthyear + 1)
+     list(name.code=name.code, byear=byear)
+}
+
+cobb.info <- getinfo("Ty","Cobb")
+cobb.data  <- subset(batting,  playerID == cobb.info$name.code)
+
+williams.info <- getinfo("Ted","Williams")
+williams.data <- subset(batting, playerID == williams.info$name.code)
+
+rose.info <- getinfo("Pete","Rose")
+rose.data <- subset(batting, playerID == rose.info$name.code[1]) #had to select proper Pete Rose.
+
+# c
+cobb.data$Age <- cobb.data$yearID - cobb.info$byear
+williams.data$Age <- williams.data$yearID - williams.info$byear
+rose.data$Age <- rose.data$yearID - rose.info$byear[1]
+
+#d
+with(rose.data, plot(Age, cumsum(H),
+                     type = "l",
+                     lty = 2,
+                     lwd = 2,
+                     xlab = "Age",
+                     ylab = "Career Home Runs",
+                     xlim = c(18, 45),
+                     ylim = c(0, 5000)))
+
+with(cobb.data, lines(Age, cumsum(H),
+                      lty = 3,
+                      lwd = 2))
+
+with(williams.data, lines(Age, cumsum(H),
+                          lty = 4,
+                          lwd = 2))
+legend(20, 5000,
+       legend = c(paste0("Pete Rose (", 
+                         sum(rose.data$H),
+                         ")"),
+                  paste0("Ty Cobb (",
+                         sum(cobb.data$H),
+                         ")"),
+                  paste0("Ted Williams (",
+                         sum(williams.data$H),
+                         ")")),
+       lty = 2:4,
+       lwd = 2)
+```
+
+# Working with Retrosheet Data
+## Exercise 7
+```{r}
+# a
+source("e:/Baseball/scripts/baseball.R")  #work
+
+#the below function is in the above file
+#parse.retrosheet.php(1998)
+# after this script was run the resulting file was moved and will not be run again.
+
+data1998 <- read.csv("E:/Baseball/data/retro/all1998.csv")  # WORK
+fields <- read.csv("E:/Baseball/data/book/fields.csv")  # WORK
+names(data1998) <- fields[,"Header"]
+
+retro.ids <- read.csv("E:/Baseball/data/book/retrosheetIDs.csv")  # WORK
+sosa.id <- as.character(subset(retro.ids,
+                               FIRST == "Sammy" & LAST == "Sosa")$ID)
+mac.id <- as.character(subset(retro.ids,
+                               FIRST == "Mark" & LAST == "McGwire")$ID)
+
+sosa.data <- subset(data1998, BAT_ID == sosa.id)
+mac.data <- subset(data1998, BAT_ID == mac.id)
+
+# b
+mac.data <- subset(mac.data, BAT_EVENT_FL == TRUE)
+sosa.data <- subset(sosa.data, BAT_EVENT_FL == TRUE)
+
+# c
+mac.data$PA <- 1:nrow(mac.data)
+sosa.data$PA <- 1:nrow(sosa.data)
+
+# d
+mac.HR.PA <- mac.data$PA[mac.data$EVENT_CD == 23]
+sosa.HR.PA <- sosa.data$PA[sosa.data$EVENT_CD == 23]
+
+# e
+mac.spacing <- diff(c(0, mac.HR.PA))
+sosa.spacing <- diff(c(0, sosa.HR.PA))
+
+# f
+summary(mac.spacing)
+summary(sosa.spacing)
+
+par(mfcol=c(2,1))
+
+boxplot(mac.spacing,
+        horizontal = T,
+        main = "Mac"
+        )
+boxplot(sosa.spacing,
+        horizontal = T,
+        main = "Sosa"
+        )
+par(mfcol=c(1,1))
+
+sosa.spacing.na <- sosa.spacing
+sosa.spacing.na[(length(sosa.spacing.na)+1):length(mac.spacing)] <- NA
+spacing <- data.frame(sosa.spacing.na, mac.spacing)
+names(spacing) <- c("Sosa", "McGwire")
+boxplot(spacing, horizontal = TRUE)
+
+hist(mac.spacing,
+     xlab = "At bats between Home Runs",
+     main = "McGwire")
+hist(sosa.spacing,
+     xlab = "At bats between Home Runs",
+     main = "sosa")
+```
+

@@ -1,0 +1,179 @@
+---
+title: "Chapter 4"
+author: "Nick Lauerman"
+output: html_document
+---
+# Section 4.2
+```{rglobal_options, include=FALSE}
+knitr::opts_chunk$set(tidy=FALSE)
+
+```
+
+```{r section 4.2}
+#teams <- read.csv("E:/Baseball/data/lahman/teams.csv") #WORK
+teams <- read.csv("f:/Baseball/data/lahman/teams.csv")  #HOME
+tail(teams)
+myteams <- subset(teams,
+                  yearID > 2000,
+                  select = c("teamID",
+                             "yearID",
+                             "lgID",
+                             "G",
+                             "W",
+                             "L",
+                             "R",
+                             "RA"))
+tail(myteams)
+
+myteams$RD <- with(myteams, R - RA)
+myteams$Wpct <- with(myteams, W / (W + L))
+
+plot(myteams$RD, myteams$Wpct,
+     xlab = "Run Differential",
+     ylab = "Winning percentage")
+
+```
+
+# Section 4.3
+```{r section 4.3}
+linfit <- lm(Wpct ~ RD, data = myteams)
+linfit
+
+plot(myteams$RD, myteams$Wpct,
+     xlab = "Run Differential",
+     ylab = "Winning percentage")
+# add a linear line to the scatter plot
+abline(a = coef(linfit)[1],
+       b = coef(linfit)[2],
+       lwd = 2)
+#add linear model predictions and residuals to data fram
+myteams$linWpct <- predict(linfit)
+myteams$linResiduals <- residuals(linfit)
+
+#plot the residuals
+plot(myteams$RD, myteams$linResiduals,
+     xlab = "Run Differential",
+     ylab = "Residual")
+abline(h=0, lty = 3)
+
+#indicate some outlayers
+points(c(68,88),c(0.0749, -0.0733), pch = 19)
+text(68, 0.0749, "LAA '08", pos = 4, cex = 0.8)
+text(88, -0.0733, "CLE '06", pos = 4, cex = 0.8)
+
+#compute the mean and Root Mean Square Error
+mean(myteams$linResiduals)
+linRMSE <- sqrt(mean(myteams$linResiduals ^ 2))
+linRMSE
+
+#error intervials
+nrow(subset(myteams,
+            abs(linResiduals) < linRMSE)) /
+     nrow(myteams)
+
+nrow(subset(myteams,
+            abs(linResiduals) < 2 * linRMSE)) /
+     nrow(myteams)
+
+```
+
+# Section 4.4
+```{r section 4.4}
+myteams$pytWpct <- with(myteams,
+                       R ^ 2 / (R ^ 2  +  RA ^ 2))
+myteams$pytResiduals <- myteams$Wpct - myteams$pytWpct
+
+#calculate RMSE
+sqrt(mean(myteams$pytResiduals ^ 2))
+```
+
+# Section 4.5
+
+```{r section 4.5}
+myteams$logWratio <- log(myteams$W / myteams$L)
+myteams$logRratio <- log(myteams$R / myteams$RA)
+pytFit <- lm(logWratio ~ 0 + logRratio, data = myteams)
+pytFit
+```
+
+# Section 4.6
+Need to review and take care of how to get data from Retorsheets.ORG outside of 
+the function already developed in chapter 3
+
+```{r section 4.6}
+#gl2011 <- read.table("e:/baseball/data/Book/gl2011.txt",  # work
+#                     sep = ",")
+gl2011 <- read.table("f:/baseball/data/Book/gl2011.txt",  # home
+                     sep = ",")
+#glheaders <- read.csv("e:/baseball/data/Book/game_log_header.csv") # work
+glheaders <- read.csv("f:/baseball/data/Book/game_log_header.csv") # home
+names(gl2011) <- names(glheaders)
+
+BOS2011 <- subset(gl2011,
+                   HomeTeam == "BOS" | VisitingTeam == "BOS",
+                   select = c("VisitingTeam",
+                              "HomeTeam",
+                              "VisitorRunsScored",
+                              "HomeRunsScore"))
+
+head(BOS2011)
+
+BOS2011$ScoreDiff <- with(BOS2011,
+                          ifelse(HomeTeam == "BOS",
+                                 HomeRunsScore - VisitorRunsScored,
+                                 VisitorRunsScored - HomeRunsScore))
+
+BOS2011$W <- BOS2011$ScoreDiff >0
+
+aggregate(abs(BOS2011$ScoreDiff),
+        list(W = BOS2011$W),
+        summary)
+
+results <- gl2011[,c("VisitingTeam",
+                     "HomeTeam",
+                     "VisitorRunsScored",
+                     "HomeRunsScore")]
+
+results$winner <- ifelse(results$HomeRunsScore > results$VisitorRunsScored,
+                         as.character(results$HomeTeam),
+                         as.character(results$VisitingTeam))
+
+results$diff <- abs(results$VisitorRunsScored - results$HomeRunsScore)
+
+onerungames <- subset(results, diff == 1)
+onerunwins <- as.data.frame(table(onerungames$winner))
+names(onerunwins) <- c("teamID", "onerunW")
+
+teams2011 <- subset(myteams, yearID == 2011)
+teams2011[teams2011$teamID == "LAA", "teamID"] <- "ANA"
+teams2011 <- merge(teams2011, onerunwins)
+plot(teams2011$onerunW, teams2011$pytResiduals,
+     xlab = "one run wins",
+     ylab = "Pythagorean residuals")
+
+#pit <- read.csv("e:/Baseball/data/lahman/Pitching.csv")  # work
+pit <- read.csv("f:/Baseball/data/lahman/Pitching.csv")  # home
+top_closers <- subset(pit,
+                      GF > 50 & ERA < 2.5,
+                      select = c("playerID",
+                                 "yearID",
+                                 "teamID"))
+
+teams_top_closers <- merge(myteams, top_closers)
+summary(teams_top_closers$pytResiduals)
+```
+
+# Section 4.7
+```{rbsection 4.7}
+D(expression(G * R^2 / (R^2 + RA + RA^2)), "R")
+IR <- function(RS=5, RA=5){
+     round((RS^2 +RA^2)^2 / (2 * RA * RA^2), 1)
+}
+
+IRtable <- expand.grid(RS = seq(3, 6, 0.5),
+                       RA = seq(3, 6, 0.5))
+rbind(head(IRtable), tail(IRtable))
+IRtable$IRW <- IR(IRtable$RS, IRtable$RA)
+xtabs(IRW ~ RS + RA, data = IRtable)
+```
+

@@ -1,0 +1,501 @@
+---
+title: "Chapter 9"
+author: "Nick Lauerman"
+output:
+  html_document:
+    number_sections: no
+    toc: yes
+  pdf_document:
+    toc: yes
+    toc_depth: 4
+---
+
+***
+
+Graphs are included in a seperate code block, when needed, to allow caching of data within the 
+markdown enviroment allowing to reduced time to execute and complile the page.
+
+***
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(tidy=FALSE)
+# change Drive letter for home (F:/) or work (E:/) locations
+```
+# setup
+Libraries used:
+```{r libraries}
+# library(plotrix)
+# library(ggplot2)
+# library(lattice)
+library(car)
+library(plyr)
+library(MASS)
+```
+
+Setting the seed for random numbers. The authors didn't set a seed or share 
+it if they had set on in the book, this has rendered most to the results in the
+simulations chapter non-reproducable. A seed is set here to for self consistancy,
+allowing the results to be reproduced internally.
+
+```{r set seed, cache=TRUE, cache.path="../cache/"}
+set.seed(894619)
+```
+
+
+
+# Section 9.2
+## Section 9.2.2
+```{r section 9.2.2, cache=TRUE, cache.path="../cache/"}
+data2011 <- read.csv("../data/retro/all2011.csv",
+                     header = FALSE)
+fields <- read.csv("../data/book/fields.csv")
+names(data2011) <- fields[ ,"Header"]
+
+
+data2011$HALF_INNING <- with(data2011,
+                             paste(GAME_ID, INN_CT, BAT_HOME_ID))
+data2011$RUNS.SCORED  <-  with(data2011,
+                                (BAT_DEST_ID >3) +
+                                     (RUN1_DEST_ID > 3) +
+                                     (RUN2_DEST_ID > 3) +
+                                     (RUN3_DEST_ID > 3))
+
+get.state <- function(runner1, runner2, runner3, out){
+     runners <- paste0(runner1, runner2, runner3)
+     paste(runners, out)
+}
+
+RUNNER1 <- ifelse(as.character(data2011[, "BASE1_RUN_ID"]) == "", 0, 1)
+RUNNER2 <- ifelse(as.character(data2011[, "BASE2_RUN_ID"]) == "", 0, 1)
+RUNNER3 <- ifelse(as.character(data2011[, "BASE3_RUN_ID"]) == "", 0, 1)
+data2011$STATE <- get.state(RUNNER1, RUNNER2, RUNNER3,  data2011$OUTS_CT)
+
+NRUNNER1 <- with(data2011,
+                 as.numeric(RUN1_DEST_ID ==1 |
+                                 BAT_DEST_ID == 1))
+NRUNNER2 <- with(data2011,
+                 as.numeric(RUN1_DEST_ID == 2 |
+                                 RUN1_DEST_ID == 2 |
+                                 BAT_DEST_ID == 2))
+NRUNNER3 <- with(data2011, 
+                 as.numeric(RUN1_DEST_ID == 3 |
+                                 RUN2_DEST_ID == 3 |
+                                 RUN3_DEST_ID == 3 |
+                                 BAT_DEST_ID == 3))
+NOUTS <- with(data2011, OUTS_CT + EVENT_OUTS_CT)
+data2011$NEW.STATE <- get.state(NRUNNER1, NRUNNER2, NRUNNER3, NOUTS)
+
+data2011 <- subset(data2011, (STATE != NEW.STATE) | (RUNS.SCORED > 0))
+
+require(plyr)
+data.outs <- ddply(data2011, .(HALF_INNING),
+                   summarize,
+                   Outs.Inning = sum(EVENT_OUTS_CT))
+data2011 <- merge(data2011, data.outs)
+
+# NOTE: the second subset command is modified from the one given in the book to 
+# align with the goals of the two subset commands given the the text preciding 
+# the code fragment.
+data2011C <- subset(data2011, Outs.Inning == 3)
+data2011C <- subset(data2011C, BAT_EVENT_FL == TRUE)
+
+require(car)
+data2011C$NEW.STATE <- recode(data2011C$NEW.STATE,
+                              "c('000 3', '100 3','010 3','001 3',
+                              '110 3','101 3','011 3','111 3') = '3' ")
+```
+
+## Section 9.2.3
+```{r section 9.2.3, cache=TRUE, cache.path="../cache/"}
+T.matrix <- with(data2011C,
+                 table(STATE, NEW.STATE))
+P.matrix <- prop.table(T.matrix, 1)
+
+P.matrix <- rbind(P.matrix, c(rep(0, 24), 1))
+
+P1 <- round(P.matrix["000 0", ], 3)
+data.frame(Prob=P1[P1 > 0])
+
+P2 <- round(P.matrix["010 2",], 3)
+data.frame(Prob = P2[P2 > 0])
+```
+
+### Section 9.2.4
+```{r Section 9.2.4, cache=TRUE, cache.path="../cache/"}
+count.runners.outs <- function(s){
+     sum(as.numeric(strsplit(s,"")[[1]]),
+         na.rm = TRUE)
+}
+
+runners.outs <- sapply(dimnames(T.matrix)[[1]],
+                      count.runners.outs)[-25]
+R <- outer(runners.outs + 1,
+           runners.outs,
+           FUN = "-")
+dimnames(R)[[1]] <- dimnames(T.matrix)[[1]][-25]
+dimnames(R)[[2]] <- dimnames(T.matrix)[[1]][-25]
+
+R <- cbind(R, rep(0,24))
+
+simulate.half.inning <- function(P, R, start = 1){
+     s <- start
+     path <- NULL
+     runs <- 0
+     while(s < 25){
+          s.new <- sample(1:25, 1, prob = P[s, ])
+          path <- c(path, s.new)
+          runs <- runs + R[s, s.new]
+          s  <- s.new
+     }
+     runs
+}
+
+RUNS <- replicate(10000,
+                  simulate.half.inning(T.matrix, R))
+table(RUNS)
+
+sum(RUNS[RUNS >= 5]) / 10000
+
+mean(RUNS)
+
+
+RUNS.J <- function(j){
+     mean(replicate(10000,
+                    simulate.half.inning(T.matrix, R, j)))
+}
+Runs.Expectancy <- sapply(1:24, RUNS.J)
+Runs.Expectancy <- t(round(matrix(Runs.Expectancy, 3, 8), 2))
+dimnames(Runs.Expectancy)[[2]] <- c("0 Outs", "1 Outs","2 Outs")
+dimnames(Runs.Expectancy)[[1]] <- c("000","001","010","011","100",
+                                    "101","110","111")
+Runs.Expectancy
+
+Runs <- matrix(c(0.47, 0.25, 0.10, 1.45, 0.94, 0.32,
+                 1.06, 0.65, 0.31, 1.93, 1.34, 0.54,
+                 0.84, 0.50, 0.22, 1.75, 1.15, 0.49,
+                 1.41, 0.87, 0.42, 2.17, 1.47, 0.76),
+               8, 3,  byrow = TRUE)
+Runs - Runs.Expectancy
+```
+
+## Section 9.2.5
+```{r section 9.2.5, cache=TRUE, cache.path="../cache/"}
+P.matrix.3 <- P.matrix %*% P.matrix %*% P.matrix
+
+sorted.P <- sort(round(P.matrix.3["000 0", ], 3),
+                 decreasing = TRUE)
+head(data.frame(Prob = sorted.P))
+
+Q <- P.matrix[-25, -25]
+N <- solve(diag(rep(1, 24)) - Q)
+
+N.0000 <- round(N["000 0", ], 2)
+head(data.frame(N = N.0000))
+sum(N.0000)
+Length <- round(t(N %*% rep(1, 24)), 2)
+data.frame(L= Length[1, 1:8])
+
+```
+
+## Section 9.2.6
+```{r section 9.2.6, cache=TRUE, cache.path="../cache/"}
+data2011C$HOME_TEAM_ID  <- with(data2011C,
+                               substr(GAME_ID, 1, 3))
+data2011C$BATTING.TEAM <- with(data2011C,
+                               ifelse(BAT_HOME_ID == 0,
+                                      as.character(AWAY_TEAM_ID),
+                                      as.character(HOME_TEAM_ID)))
+
+Team.T <- with(data2011C,
+               table(BATTING.TEAM,
+                     STATE,
+                     NEW.STATE))
+d.state <- subset(data2011C, STATE == "100 2")
+Team.T.S  <- with(d.state, 
+                  table(BATTING.TEAM,
+                        NEW.STATE))
+Team.T.S
+```
+
+# Section 9.3
+## Section 9.3.2
+```{r section 9.3.2, cache=TRUE, cache.path="../cache/"}
+make.schedule <- function(teams, k){
+     n.teams <- length(teams)
+     Home <- rep(gl(n.teams,
+                    n.teams,
+                    length = n.teams^2,
+                    labels = teams),
+                 k)
+     Visitor <- rep(gl(n.teams,
+                       1,
+                       length = n.teams^2,
+                       labels = teams),
+                    k)
+     schedule <- data.frame(Home = Home,
+                            Visitor = Visitor)
+     subset(schedule, Home != Visitor)
+     }
+
+NL <- c("ATL",
+        "CHN",
+        "CIN",
+        "HOU",
+        "LAN",
+        "NYN",
+        "PHI",
+        "PIT",
+        "SFN",
+        "SLN")
+AL <- c("BAL",
+        "BOS",
+        "CAL",
+        "CHA",
+        "CLE",
+        "DET",
+        "MIN",
+        "NYA",
+        "OAK",
+        "WS2")
+teams <- c(NL,AL)
+league <- c(rep(1,10),
+            rep(2,10))
+schedule <- rbind(make.schedule(NL, 9),
+                  make.schedule(AL, 9))
+```
+
+## Section 9.3.3
+```{r section 9.3.3, cache=TRUE, cache.path="../cache/"}
+s.talent <- 0.20
+talents <- rnorm(20, 0, s.talent)
+TAL <- data.frame(Team = teams,
+                  League = league,
+                  Talent = talents)
+SCH <- merge(schedule,
+             TAL,
+             by.x = "Home",
+             by.y = "Team")
+names(SCH)[4] <- "Talent.Home"
+SCH <- merge(SCH,
+             TAL,
+             by.x = "Visitor",
+             by.y = "Team")
+names(SCH)[6] <- "Talent.Visitor"
+SCH$prob.Home <- with(SCH,
+                      exp(Talent.Home)/(exp(Talent.Home) + exp(Talent.Visitor)))
+head(SCH)
+```
+
+## Section 9.3.4
+```{r section 9.3.4, cache=TRUE, cache.path="../cache/"}
+SCH$outcome <- with(SCH,
+                    rbinom(nrow(SCH), 1, prob.Home))
+SCH$winner <- with(SCH,
+                   ifelse(outcome,
+                          as.character(Home),
+                          as.character(Visitor)))
+head(SCH[ , c("Visitor",
+              "Home",
+              "prob.Home",
+              "outcome",
+              "winner")])
+
+wins <- table(SCH$winner)
+WIN <- data.frame(Team = names(wins),
+                  Wins = as.numeric(wins))
+RESULTS <- merge(TAL, WIN)
+```
+
+## Section 9.3.5
+```{r section 9.3.5, cache=TRUE, cache.path="../cache/"}
+win.league <- function(RR, league){
+     wins <- RR$Wins * (RR$League == league)
+     MAX <- max(wins)
+     if(sum(wins == MAX) > 1){
+          prob <- exp(RR$Talent) * (wins == MAX)
+          outcome <- c(rmultinom(1, 1, prob))
+          RR$Winner.Lg <- RR$Winner.Lg + outcome
+          }
+     if(sum(wins == MAX) == 1){
+          RR$Winner.Lg <- RR$Winner.Lg + as.numeric(wins == MAX)
+          }
+     RR
+     }
+RESULTS$Winner.Lg <- 0
+RESULTS$Winner.WS <- 0
+for(j in 1:2){
+     RESULTS <- win.league(RESULTS, j)
+     }
+teams <- (1:20)[RESULTS$Winner.Lg == 1]
+outcome <- c(rmultinom(1, 7, exp(RESULTS$Talent)[teams]))
+winner <- teams[1] * (diff(outcome) < 0) + teams[2] * (diff(outcome) > 0)
+RESULTS$Winner.WS[winner] <- 1
+```
+
+## Section 9.3.6
+```{r section 9.3.6, cache=TRUE, cache.path="../cache/"}
+one.simulation.68 <- function(s.talent){
+     make.schedule <- function(teams, k){
+          n.teams <- length(teams)
+          Home <- rep(gl(n.teams,
+                         n.teams,
+                         length = n.teams^2,
+                         labels = teams),
+                      k)
+          Visitor <- rep(gl(n.teams,
+                            1,
+                            length = n.teams^2,
+                            labels = teams),
+                         k)
+          schedule <- data.frame(Home = Home,
+                                 Visitor = Visitor)
+          subset(schedule, Home != Visitor)
+          }
+     
+     NL <- c("ATL",
+             "CHN",
+             "CIN",
+             "HOU",
+             "LAN",
+             "NYN",
+             "PHI",
+             "PIT",
+             "SFN",
+             "SLN")
+     AL <- c("BAL",
+             "BOS",
+             "CAL",
+             "CHA",
+             "CLE",
+             "DET",
+             "MIN",
+             "NYA",
+             "OAK",
+             "WS2")
+     teams <- c(NL,AL)
+     league <- c(rep(1,10),
+                 rep(2,10))
+     schedule <- rbind(make.schedule(NL, 9),
+                       make.schedule(AL, 9))
+     talents <- rnorm(20, 0, s.talent)
+     TAL <- data.frame(Team = teams,
+                       League = league,
+                       Talent = talents)
+     SCH <- merge(schedule,
+                  TAL,
+                  by.x = "Home",
+                  by.y = "Team")
+     names(SCH)[4] <- "Talent.Home"
+     SCH <- merge(SCH,
+                  TAL,
+                  by.x = "Visitor",
+                  by.y = "Team")
+     names(SCH)[6] <- "Talent.Visitor"
+     SCH$prob.Home <- with(SCH,
+                           exp(Talent.Home)/(exp(Talent.Home) + exp(Talent.Visitor)))
+     SCH$outcome <- with(SCH,
+                         rbinom(nrow(SCH), 1, prob.Home))
+     SCH$winner <- with(SCH,
+                        ifelse(outcome,
+                               as.character(Home),
+                               as.character(Visitor)))
+     head(SCH[ , c("Visitor",
+                   "Home",
+                   "prob.Home",
+                   "outcome",
+                   "winner")])
+     
+     wins <- table(SCH$winner)
+     WIN <- data.frame(Team = names(wins),
+                       Wins = as.numeric(wins))
+     RESULTS <- merge(TAL, WIN)
+     win.league <- function(RR, league){
+          wins <- RR$Wins * (RR$League == league)
+          MAX <- max(wins)
+          if(sum(wins == MAX) > 1){
+               prob <- exp(RR$Talent) * (wins == MAX)
+               outcome <- c(rmultinom(1, 1, prob))
+               RR$Winner.Lg <- RR$Winner.Lg + outcome
+               }
+          if(sum(wins == MAX) == 1){
+               RR$Winner.Lg <- RR$Winner.Lg + as.numeric(wins == MAX)
+               }
+          RR
+          }
+     RESULTS$Winner.Lg <- 0
+     RESULTS$Winner.WS <- 0
+     for(j in 1:2){
+          RESULTS <- win.league(RESULTS, j)
+          }
+     teams <- (1:20)[RESULTS$Winner.Lg == 1]
+     outcome <- c(rmultinom(1, 7, exp(RESULTS$Talent)[teams]))
+     winner <- teams[1] * (diff(outcome) < 0) + teams[2] * (diff(outcome) > 0)
+     RESULTS$Winner.WS[winner] <- 1
+     return(RESULTS)
+}
+RESULTS <- one.simulation.68(0.20)
+RESULTS
+
+
+display.standing <- function(RESULTS, league){
+     Standings <- subset(RESULTS,
+                         League == league,
+                         select = c("Team",
+                                    "Wins"))
+     Standings$Losses <- 162 - Standings$Wins
+     Standings[order(Standings$Wins, decreasing = TRUE), ]
+}
+cbind(display.standing(RESULTS, 1),
+      display.standing(RESULTS, 2))
+with(RESULTS, as.character(Team[Winner.Lg == 1]))
+with(RESULTS, as.character(Team[Winner.WS == 1]))
+
+```
+
+## Section 9.3.7
+```{r sectioi 9.3.7 A, cache=TRUE, cache.path="../cache/"}
+Many.Results <- NULL
+for(j in 1:1000){
+     Many.Results <- rbind(Many.Results, one.simulation.68(0.20))
+}
+```
+```{r section 9.3.7 plot 1}
+with(Many.Results, smoothScatter(Talent, Wins))
+```
+```{r sectioi 9.3.7 B, cache=TRUE, cache.path="../cache/"}
+Results.avg <- subset(Many.Results,
+                      Talent > -0.05 & Talent < 0.05)
+```
+```{r section 9.3.7 plot 2}
+hist(Results.avg$Wins)
+require(MASS)
+truehist(Results.avg$Wins)
+```
+```{r sectioi 9.3.7 C, cache=TRUE, cache.path="../cache/"}
+fit1 <- glm(Winner.WS ~ Talent,
+            data = Many.Results,
+            family=binomial)
+fit2 <- glm(Winner.Lg ~ Talent,
+            data = Many.Results,
+            family=binomial)
+```
+```{r section 9.3.7 plot 3}
+b1 <- coef(fit1)
+curve(exp(b1[1] + b1[2] * x) / (1 + exp(b1[1] + b1[2] * x)),
+      -0.4, 0.4,
+      xlab = "Talent",
+      ylab = "Probability",
+      lwd = 1,
+      lty = 1,
+      ylim = c(0, 1))
+
+b2 <- coef(fit2)
+curve(exp(b2[1] + b2[2] * x) / (1 + exp(b2[1] + b2[2] * x)),
+      add = TRUE,
+      lwd = 1,
+      lty = 2)
+legend(-0.2, 0.8,
+       legend = c("Win Pennant",
+                  "Win World Series"),
+       lwd = 1,
+       lty = c(1, 2))

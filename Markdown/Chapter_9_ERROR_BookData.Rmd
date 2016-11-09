@@ -1,0 +1,183 @@
+---
+title: "Chapter 9"
+author: "Nick Lauerman"
+output: pdf_document
+---
+
+***
+
+Graphs are included in a seperate code block, when needed, to allow caching of data within the 
+markdown enviroment allowing to reduced time to execute and complile the page.
+
+***
+Change in section 9.2.2 leaving the second subset to reflect whatis in the books code verse 
+what is in the description and using all2011.csv supplied by author
+
+```{rglobal_options, include=FALSE}
+knitr::opts_chunk$set(tidy=FALSE)
+# change Drive letter for home (F:/) or work (E:/) locations
+```
+## setup
+```{r libraries}
+library(plotrix)
+library(ggplot2)
+library(lattice)
+library(car)
+library(plyr)
+```
+
+
+## Section 9.2
+### Section 9.2.2
+```{r section 9.2.2, cache=TRUE, cache.path="E:/Baseball/cache/"}
+data2011 <- read.csv("E:/Baseball/data/book/all2011.csv",
+                     header = FALSE)
+fields <- read.csv("E:/Baseball/data/book/fields.csv")
+names(data2011) <- fields[ ,"Header"]
+
+
+data2011$HALF_INNING <- with(data2011,
+                             paste(GAME_ID, INN_CT, BAT_HOME_ID))
+data2011$RUNS.SCORED  <-  with(data2011,
+                                (BAT_DEST_ID >3) +
+                                     (RUN1_DEST_ID > 3) +
+                                     (RUN2_DEST_ID > 3) +
+                                     (RUN3_DEST_ID > 3))
+
+get.state <- function(runner1, runner2, runner3, out){
+     runners <- paste0(runner1, runner2, runner3)
+     paste(runners, out)
+}
+
+RUNNER1 <- ifelse(as.character(data2011[, "BASE1_RUN_ID"]) == "", 0, 1)
+RUNNER2 <- ifelse(as.character(data2011[, "BASE2_RUN_ID"]) == "", 0, 1)
+RUNNER3 <- ifelse(as.character(data2011[, "BASE3_RUN_ID"]) == "", 0, 1)
+data2011$STATE <- get.state(RUNNER1, RUNNER2, RUNNER3,  data2011$OUTS_CT)
+
+NRUNNER1 <- with(data2011,
+                 as.numeric(RUN1_DEST_ID ==1 |
+                                 BAT_DEST_ID == 1))
+NRUNNER2 <- with(data2011,
+                 as.numeric(RUN1_DEST_ID == 2 |
+                                 RUN1_DEST_ID == 2 |
+                                 BAT_DEST_ID == 2))
+NRUNNER3 <- with(data2011, 
+                 as.numeric(RUN1_DEST_ID == 3 |
+                                 RUN2_DEST_ID == 3 |
+                                 RUN3_DEST_ID == 3 |
+                                 BAT_DEST_ID == 3))
+NOUTS <- with(data2011, OUTS_CT + EVENT_OUTS_CT)
+data2011$NEW.STATE <- get.state(NRUNNER1, NRUNNER2, NRUNNER3, NOUTS)
+
+data2011 <- subset(data2011, (STATE != NEW.STATE) | (RUNS.SCORED > 0))
+
+require(plyr)
+data.outs <- ddply(data2011, .(HALF_INNING),
+                   summarize,
+                   Outs.Inning = sum(EVENT_OUTS_CT))
+data2011 <- merge(data2011, data.outs)
+data2011C <- subset(data2011, Outs.Inning == 3)
+data2011C <- subset(data2011, BAT_EVENT_FL == TRUE)
+
+require(car)
+data2011C$NEW.STATE <- recode(data2011C$NEW.STATE,
+                              "c('000 3', '100 3','010 3',
+                              '001 3','110 3','101 3','011 3',
+                              '111 3') = '3' ")
+```
+```{r}
+table(data2011C$Outs.Inning)
+```
+
+### Section 9.2.3
+```{r section 9.2.3, cache=TRUE, cache.path="E:/Baseball/cache/"}
+T.matrix <- with(data2011C,
+                 table(STATE, NEW.STATE))
+P.matrix <- prop.table(T.matrix, 1)
+
+P.matrix <- rbind(P.matrix, c(rep(0, 24), 1))
+
+P1 <- round(P.matrix["000 0", ], 3)
+data.frame(Prob=P1[P1 > 0])
+
+P2 <- round(P.matrix["010 2",], 3)
+data.frame(Prob = P2[P2 > 0])
+```
+
+### Section 9.2.4
+```{r Section 9.2.4, cache=TRUE, cache.path="E:/Baseball/cache/"}
+count.runners.outs <- function(s){
+     sum(as.numeric(strsplit(s,"")[[1]]),
+         na.rm = TRUE)
+}
+
+runners.outs <- sapply(dimnames(T.matrix)[[1]],
+                      count.runners.outs)[-25]
+R <- outer(runners.outs + 1,
+           runners.outs,
+           FUN = "-")
+dimnames(R)[[1]] <- dimnames(T.matrix)[[1]][-25]
+dimnames(R)[[2]] <- dimnames(T.matrix)[[1]][-25]
+
+R <- cbind(R, rep(0,24))
+
+simulate.half.inning <- function(P, R, start = 1){
+     s <- start
+     path <- NULL
+     runs <- 0
+     while(s < 25){
+          s.new <- sample(1:25, 1, prob = P[s, ])
+          path <- c(path, s.new)
+          runs <- runs + R[s, s.new]
+          s  <- s.new
+     }
+     runs
+}
+
+RUNS <- replicate(10000,
+                  simulate.half.inning(T.matrix, R))
+table(RUNS)
+
+sum(RUNS[RUNS >= 5]) / 10000
+
+mean(RUNS)
+
+
+RUNS.J <- function(j){
+     mean(replicate(10000,
+                    simulate.half.inning(T.matrix, R, j)))
+}
+Runs.Expectancy <- sapply(1:24, RUNS.J)
+Runs.Expectancy <- t(round(matrix(Runs.Expectancy, 3, 8), 2))
+dimnames(Runs.Expectancy)[[2]] <- c("0 Outs", "1 Outs","2 Outs")
+dimnames(Runs.Expectancy)[[1]] <- c("000","001","010","011","100",
+                                    "101","110","111")
+Runs.Expectancy
+
+Runs <- matrix(c(0.47, 0.25, 0.10, 1.45, 0.94, 0.32,
+                 1.06, 0.65, 0.31, 1.93, 1.34, 0.54,
+                 0.84, 0.50, 0.22, 1.75, 1.15, 0.49,
+                 1.41, 0.87, 0.42, 2.17, 1.47, 0.76),
+               8, 3,  byrow = TRUE)
+Runs - Runs.Expectancy
+```
+
+### Section 9.2.5
+```{r, cache=TRUE, cache.path="E:/Baseball/cache/"}
+P.matrix.3 <- P.matrix %*% P.matrix %*% P.matrix
+
+sorted.P <- sort(round(P.matrix.3["000 0", ], 3),
+                 decreasing = TRUE)
+head(data.frame(Prob = sorted.P))
+
+Q <- P.matrix[-25, -25]
+N <- solve(diag(rep(1, 24)) - Q)
+
+N.0000 <- round(N["000 0", ], 2)
+head(data.frame(N = N.0000))
+sum(N.0000)
+Length <- round(t(N %*% rep(1, 24)), 2)
+data.frame(L= Length[1, 1:8])
+
+```
+
