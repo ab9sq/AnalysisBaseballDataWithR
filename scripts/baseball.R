@@ -42,7 +42,7 @@ parse.retrosheet.php  <- function(season){
      }
      create.csv.roster <- function(year){
           filenames <- list.files(path = "download.folder/unzipped/")
-          filenames.roster <- 
+          filenames.roster <-
                subset(filenames,
                       substr(filenames, 4, 11) == paste(year,".ROS",sep = ""))
           read.csv2 <- function(file)
