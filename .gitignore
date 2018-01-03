@@ -3,7 +3,7 @@
 chadwich_download/*
 download.folder/*
 baseball.RProj
-Raw_Data/*
+# Raw_Data/*
 data/*
 note*.*
 cache/*
