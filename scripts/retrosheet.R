@@ -74,6 +74,7 @@ parse.retrosheet.php  <- function(season){
           shell("del *.EVA")
           shell("del *.ROS")
           shell("del TEAM*")
+          setwd(wd)
      }
      download.retrosheet(season)
      unzip.retrosheet(season)

@@ -1,4 +1,7 @@
 #Project specific
+Github files for book/*
+# Lahman data files
+lahman/*
 #chadwich files for retropages processing
 chadwich_download/*
 download.folder/*
